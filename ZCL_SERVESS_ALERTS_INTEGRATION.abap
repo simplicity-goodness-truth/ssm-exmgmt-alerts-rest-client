@@ -69,7 +69,7 @@ public section.
 *      end of ty_json_req .
     begin of ty_json_req,
 
-        aa_sourcesubsystem type char20,
+        aa_sourcesubsystem type char100,
         aa_sourceeventid   type char50,
         aa_severity        type char20,
         aa_errorcode       type string,
@@ -1513,17 +1513,22 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 * +--------------------------------------------------------------------------------------</SIGNATURE>
   method get_cpi_source_system.
 
-    search ip_iflow_name for '_'.
+*    search ip_iflow_name for '_'.
+*
+*    if sy-subrc = 0.
+*
+*      ep_result = substring_before( val = ip_iflow_name sub = '_' ).
+*
+*    else.
+*
+*      ep_result = ip_iflow_name.
+*
+*    endif. " if sy-subrc = 0
+*
 
-    if sy-subrc = 0.
+    " New logic as per September 8th 2022: CPI source system = IFLOW
 
-      ep_result = substring_before( val = ip_iflow_name sub = '_' ).
-
-    else.
-
-      ep_result = ip_iflow_name.
-
-    endif. " if sy-subrc = 0
+    ep_result = ip_iflow_name.
 
   endmethod.
 
@@ -1699,9 +1704,11 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
       end of ty_rules_map.
 
-    data: lv_subsystem type cpis_log_text,
-          lv_title     type char258,
-          lt_rules_map type table of ty_rules_map.
+    data: lv_subsystem       type cpis_log_text,
+          lv_title           type char258,
+          lv_found_subsystem type abap_bool,
+          lv_found_title     type abap_bool,
+          lt_rules_map       type table of ty_rules_map.
 
     clear lt_rules_map.
 
@@ -1711,19 +1718,57 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
       clear:
         lv_subsystem,
-        lv_title.
+        lv_title,
+        lv_found_subsystem,
+        lv_found_title.
 
       lv_subsystem = <ls_rules_map>-subsystem.
       lv_title = <ls_rules_map>-title.
 
-      if ( lv_subsystem cs ip_subsystem ) and
-        ( lv_title cs ip_title ).
+      if ip_subsystem ne '*'.
+
+        if ( ip_subsystem cp lv_subsystem ).
+
+          lv_found_subsystem = abap_true.
+        endif.
+
+      else.
+
+        if ( lv_subsystem eq ip_subsystem ).
+
+          lv_found_subsystem = abap_true.
+        endif.
+
+      endif. " if ip_subsystem ne '*'
+
+
+      if ip_title ne '*'.
+
+        if ( ip_title cp lv_title ).
+
+          lv_found_title = abap_true.
+
+        endif.
+
+      else.
+
+        if ( lv_title eq ip_title ).
+
+          lv_found_title = abap_true.
+
+        endif.
+
+      endif. "  if ip_title ne '*'
+
+      if ( lv_found_title eq abap_true ) and ( lv_found_subsystem eq abap_true ).
 
         ep_ruleid = <ls_rules_map>-ruleid.
 
-      endif. " if ( lv_subsystem cs ip_subsystem )
+      endif. " if ( lv_found_title eq abap_true ) and ( lv_found_subsystem eq abap_true )
 
     endloop. " loop at lt_rules_map assigning field-symbol(<ls_rules_map>)
+
+    " If we haven't found the rule, then doing a recursion with *
 
     if ep_ruleid is initial.
 
