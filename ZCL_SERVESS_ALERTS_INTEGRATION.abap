@@ -82,25 +82,18 @@ public section.
 
   class-data GT_EVENTS type TT_MY_SUB_OBJECTS .
 
+  class-methods GET_RULEID_FROM_MAP
+    importing
+      !IP_SUBSYSTEM type CPIS_LOG_TEXT
+      !IP_TITLE type CHAR258
+    returning
+      value(EP_RULEID) type SMOCC_TXT .
   class-methods GET_ALRT_REST_INT_PARAM_VALUE
     importing
       !IP_PARAM_NAME type CHAR20
     returning
       value(EP_VALUE) type CHAR258 .
 protected section.
-
-  class-methods ZZZGET_TICKET_ROUTE
-    importing
-      !IP_TECHNICAL_SCENARIO type AC_TECHNICAL_SCENARIO
-      !IP_ALERT_TNAME type AC_NAME
-    returning
-      value(EP_IT_SOLUTION) type INT4 .
-  class-methods ZZZGET_IC_MON_TICKET_ROUTE
-    importing
-      !IP_INTERFACE_NAME type STRING
-      !IP_ERROR_SUBSTRING type STRING
-    returning
-      value(EP_IT_SOLUTION) type INT4 .
 private section.
 
   class-methods REMOVE_SPECIAL_SYMBOLS
@@ -117,6 +110,22 @@ private section.
       !IP_SEVERITY type AC_SEVERITY
     returning
       value(EP_RESULT) type CHAR100 .
+  class-methods GET_PI_INTERFACE_TITLE
+    importing
+      !IP_METRIC_PATH type STRING
+    returning
+      value(EP_RESULT) type STRING .
+  class-methods GET_PI_INTERFACE_SUBSYSTEM
+    importing
+      !IP_METRIC_PATH type STRING
+    returning
+      value(EP_RESULT) type STRING .
+  class-methods GET_PI_INTERFACE_COMPONENTS
+    importing
+      !IP_METRIC_PATH type STRING
+      !IP_COMPONENT_NAME type STRING
+    returning
+      value(EP_RESULT) type STRING .
   class-methods GET_METRIC_TECH_CTX
     importing
       !IP_CONTEXT_ID type AC_GUID
@@ -144,6 +153,16 @@ private section.
   class-methods GET_CPI_DS_PROJECT
     importing
       !IP_METRIC_PATH type STRING
+    returning
+      value(EP_RESULT) type STRING .
+  class-methods GET_CPIDS_TASK_NAME
+    importing
+      !IP_METRIC_PATH type STRING
+    returning
+      value(EP_RESULT) type STRING .
+  class-methods GET_CPIDS_SOURCE_SYSTEM
+    importing
+      !IP_TASK_NAME type STRING
     returning
       value(EP_RESULT) type STRING .
   class-methods GET_CITYPE
@@ -467,7 +486,7 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
           ls_extracted_alert       type st_my_alert_data,
           lt_extracted_alerts      type tt_my_alert_data,
           lv_field_value           type string,
-      "    lv_double_protection     type c1,
+
           lv_servess_closed_status type char3,
           lv_open_inc_count        type i.
 
@@ -496,39 +515,6 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
         ls_extracted_alert-cust_desc = <lfs_alert>->get_custom_description( ).
         ls_extracted_alert-managed_object_id = <lfs_alert>->get_managed_object_id( ).
         ls_extracted_alert-technical_scenario = <lfs_alert>->get_technical_scenario( ).
-
-        " Double protection mechanism
-
-      "  lv_double_protection = get_alrt_rest_int_param_value('DOUBLE_PROTECTION').
-
-*        if ( lv_double_protection = 'X' ).
-*
-*          " Picking up final status from SNOW
-*
-*          lv_servess_closed_status = get_alrt_rest_int_param_value('SERVESS_CLOSED_STAT').
-*
-*          " Checking if there's already an incident opened in ServiceNow for the same object and alert
-*
-*          if lv_servess_closed_status is not initial.
-*
-*            select count(*) into lv_open_inc_count
-*              from zalrtservesslog
-*              where mai_object_name = ls_extracted_alert-managed_object_name
-*              and mai_alert_tname = ls_extracted_alert-alert_tname
-*              and servess_status ne lv_servess_closed_status.
-*
-*            " Skipping alert in case there are already open incidents
-*
-*            if ( lv_open_inc_count > 0 ).
-*
-*              continue.
-*
-*            endif. " IF ( lv_open_inc_count > 0 )
-*
-*          endif. " if lv_servess_closed_status is not INITIAL.
-*
-*        endif. " IF ( lv_double_protection = 'X' )
-
         ls_extracted_alert-visited = 'TRUE'.
 
         lv_field_value = <lfs_alert>->get_rating( ).
@@ -817,30 +803,34 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
   method compile_payload.
 
     data:
-      lv_description           type string,
-      lv_alert_guid            type ac_guid,
-      c_newline                value cl_abap_char_utilities=>newline,
-      lv_ticket_name_prefix    type char256,
-      lv_short_description     type string,
-      lv_timestamp             type timestamp,
-      lv_status_text           type string,
-      lv_status                type string,
-      lv_category_text         type string,
-      lv_category              type string,
-      lv_alert_exmgmt_content  type string,
-      lv_metric_exmgmt_content type string,
-      lv_process_id            type ac_guid,
-      lv_metric_counter        type int2,
-      lv_metric_counter_char   type char2,
-      lv_managed_object_name   type e2eem_impl_source,
-      lv_hcids_interface_name  type  e2eem_subcategory,
-      lv_context_id            type ac_guid,
-      lv_event_type_id         type ac_guid,
-      lv_route_it_solution     type int4,
-      lv_subsystem             type char20,
-      lv_iflow_name            type string,
-      lv_explicit_title          type string,
-      lv_explicit_errorcode             type string.
+      lv_description            type string,
+      lv_alert_guid             type ac_guid,
+      c_newline                 value cl_abap_char_utilities=>newline,
+      lv_ticket_name_prefix     type char256,
+      lv_short_description      type string,
+      lv_timestamp              type timestamp,
+      lv_status_text            type string,
+      lv_status                 type string,
+      lv_category_text          type string,
+      lv_category               type string,
+      lv_alert_exmgmt_content   type string,
+      lv_metric_exmgmt_content  type string,
+      lv_process_id             type ac_guid,
+      lv_metric_counter         type int2,
+      lv_metric_counter_char    type char2,
+      lv_managed_object_name    type e2eem_impl_source,
+      lv_hcids_interface_name   type  e2eem_subcategory,
+      lv_context_id             type ac_guid,
+      lv_event_type_id          type ac_guid,
+      lv_route_it_solution      type int4,
+      "   lv_subsystem              type char20,
+      lv_subsystem              type cpis_log_text,
+      lv_iflow_name             type string,
+      lv_task_name              type string,
+      lv_explicit_title         type string,
+      lv_explicit_errorcode     type string,
+      lv_map_error_code_to_rule type char1,
+      lv_title                  type char258.
 
     " JSON related data
 
@@ -884,6 +874,26 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
           ip_value = <ls_extracted_alerts>-alert_name
         changing
          cp_text = lv_description ).
+
+
+      " Setting specific error codes for CPI-DS and PI systems
+
+
+      if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCIDS_EXCEPTION_ALERT' )  .
+
+        lv_explicit_errorcode = <ls_extracted_alerts>-alert_name.
+
+      endif.
+
+      " Setting specific error code for PI alerts
+
+      if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_IFCHANNEL_PI_EXCEPTION_ALERT' ).
+
+        lv_explicit_errorcode = <ls_extracted_alerts>-alert_name.
+
+      endif.
+
+
 
       lv_timestamp = <ls_extracted_alerts>-timestamp.
 
@@ -976,6 +986,9 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
         endif. " if lv_process_id is not initial.
 
       endif. " if alert_has_exmgmt_content( ip_alert_guid = lv_alert_guid ) eq abap_true
+
+
+
 
       " -------------------------------------------------------------------------
       "       Metrics data processing
@@ -1114,14 +1127,16 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
              changing
               cp_text = lv_description ).
 
-           " Setting specific error code for CPI and CPI-DS alerts
+            " Setting specific error code for CPI and CPI-DS alerts
 
-            if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT' ) or
-                ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCIDS_EXCEPTION_ALERT' )  .
+            if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT' ).
+
 
               lv_explicit_errorcode = <gt_events>-text.
 
             endif.
+
+
 
           endif. " if ( <gt_events>-text ne '' )
 
@@ -1139,19 +1154,6 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
           concatenate lv_description c_newline into lv_description.
 
-          " Route definition
-
-*          if ( lv_route_it_solution is initial ) and ( <gt_events>-rating <> 'Green' ).
-*
-*            get_ticket_route(
-*              exporting
-*                ip_technical_scenario = <ls_extracted_alerts>-technical_scenario
-*                ip_alert_tname        = <ls_extracted_alerts>-alert_tname
-*              receiving
-*                ep_it_solution        = lv_route_it_solution ).
-*
-*          endif. " if ( lv_route_it_solution is initial ) and ( <gt_events>-rating <> 'Green' )
-
 
           " Preparing subsystem and title
 
@@ -1159,28 +1161,46 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
             when 'IC_MON'.
 
-              if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT' ) or
-               ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCIDS_EXCEPTION_ALERT' )  .
+              case <ls_extracted_alerts>-alert_tname.
 
-                lv_iflow_name = get_cpi_iflow_name( <gt_events>-metricpath ).
+                  " CPI exception
 
-                if lv_iflow_name is not initial.
+                when 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT'.
 
-                  "   lv_subsystem = get_cpi_source_system( lv_iflow_name ).
+                  lv_iflow_name = get_cpi_iflow_name( <gt_events>-metricpath ).
 
-                  lv_subsystem = 'TEST_CHANNEL_FOR_VLD'.
+                  if lv_iflow_name is not initial.
 
-                  lv_explicit_title = lv_iflow_name.
+                    lv_subsystem = get_cpi_source_system( lv_iflow_name ).
+                    lv_explicit_title = lv_iflow_name.
 
+                  endif. " if lv_iflow_name is not initial
 
-                endif. " if lv_iflow_name is not initial
+                  " CPI-DS exception
 
-              else.
+                when 'ICMON_HIGH_NO_OF_HCIDS_EXCEPTION_ALERT'.
 
-                lv_subsystem = <gt_events>-name.
+                  lv_task_name = get_cpids_task_name( <gt_events>-metricpath ).
 
+                  if lv_task_name is not initial.
 
-              endif. " if ( <ls_extracted_alerts>-alert_tname eq 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT' )
+                    lv_subsystem = get_cpids_source_system( lv_task_name ).
+                    lv_explicit_title = lv_task_name.
+
+                  endif. " if lv_iflow_name is not initial
+
+                  " PI exception
+
+                when 'ICMON_HIGH_NO_OF_IFCHANNEL_PI_EXCEPTION_ALERT'.
+
+                  lv_subsystem = get_pi_interface_subsystem( <gt_events>-metricpath ).
+                  lv_explicit_title = get_pi_interface_title( <gt_events>-metricpath ).
+
+                when others.
+
+                  lv_subsystem = <gt_events>-name.
+
+              endcase.  " case <ls_extracted_alerts>-alert_tname
 
             when others.
 
@@ -1192,23 +1212,10 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
       endloop. " LOOP AT gt_events ASSIGNING <gt_events>
 
-
-
       " ----------------- Short description -----------------------
 
       concatenate lv_managed_object_name ':' into lv_short_description.
       concatenate lv_short_description <ls_extracted_alerts>-alert_name into lv_short_description separated by space.
-
-      " Checking if prefix should be added
-
-      lv_ticket_name_prefix = get_alrt_rest_int_param_value('TICKET_NAME_PREFIX').
-
-      if ( lv_ticket_name_prefix ne '' ) .
-
-        concatenate lv_ticket_name_prefix lv_short_description into lv_short_description separated by space.
-
-      endif. " IF ( lv_snow_inc_prefix NE '' )
-
 
       " -------------------------------------------------------------------------
       "       Preparing JSON object
@@ -1218,35 +1225,51 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
       ls_json_req_obj-aa_sourceeventid = <ls_extracted_alerts>-alert_id.
       ls_json_req_obj-aa_severity  = get_severity_text( <ls_extracted_alerts>-severity ).
 
+
       if lv_explicit_errorcode is not initial.
 
-        ls_json_req_obj-aa_errorcode  = lv_explicit_errorcode.
-
-      else.
-
-        ls_json_req_obj-aa_errorcode  = <ls_extracted_alerts>-alert_tname.
-
-      endif. " if lv_explicit_errorcode is not initial
-
-
-      if lv_explicit_title is not initial.
-
-        ls_json_req_obj-title     = lv_explicit_title.
+        ls_json_req_obj-title     = lv_explicit_errorcode.
       else.
         ls_json_req_obj-title     = lv_short_description .
 
       endif.
 
 
-      ls_json_req_obj-aa_citype = get_citype( ).
-      "    ls_json_req_obj-ciname = lv_managed_object_name.
+      lv_map_error_code_to_rule = get_alrt_rest_int_param_value('MAP_ERR_CODE_TO_RULE').
+
+      if lv_map_error_code_to_rule ne 'X'.
+
+        if lv_explicit_title is not initial.
+
+          ls_json_req_obj-aa_errorcode  = lv_explicit_title.
+
+        else.
+
+          ls_json_req_obj-aa_errorcode  = <ls_extracted_alerts>-alert_tname.
+
+        endif. " if lv_explicit_errorcode is not initial
+
+      else.
+
+        lv_title = ls_json_req_obj-title.
+
+        ls_json_req_obj-aa_errorcode = get_ruleid_from_map(
+                   exporting
+                     ip_subsystem = lv_subsystem
+                     ip_title     = lv_title ).
+
+      endif.
 
 
-*      translate lv_managed_object_name to upper case.
-*      ls_json_req_obj-aa_ci_fqdn = get_tsys_url(
-*         exporting
-*           ip_alert_tname = <ls_extracted_alerts>-alert_tname
-*           ip_ext_sid     = lv_managed_object_name ).
+      " Checking if prefix should be added
+
+      lv_ticket_name_prefix = get_alrt_rest_int_param_value('TICKET_NAME_PREFIX').
+
+      if ( lv_ticket_name_prefix ne '' ) .
+
+        concatenate lv_ticket_name_prefix ls_json_req_obj-title into ls_json_req_obj-title separated by space.
+
+      endif. " IF ( lv_snow_inc_prefix NE '' )
 
       " Replacing special symbols in description
 
@@ -1374,6 +1397,61 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_CPIDS_SOURCE_SYSTEM
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_TASK_NAME                   TYPE        STRING
+* | [<-()] EP_RESULT                      TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method get_cpids_source_system.
+
+    ep_result = ip_task_name.
+
+    find all occurrences of regex '_*_(.*)_' in ip_task_name
+         match offset data(lv_moff)
+         match length data(lv_mlen).
+
+    if ( lv_moff is not initial ) and ( lv_mlen is not initial ).
+
+      " Excluding _ symbols
+
+      lv_moff = lv_moff + 1.
+      lv_mlen = lv_mlen - 2.
+
+      ep_result = substring( val = ip_task_name off = lv_moff len = lv_mlen ).
+
+    endif.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_CPIDS_TASK_NAME
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_METRIC_PATH                 TYPE        STRING
+* | [<-()] EP_RESULT                      TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_CPIDS_TASK_NAME.
+
+    data lv_iflow_name type string.
+
+    lv_iflow_name = substring_after( val = ip_metric_path sub = 'TASK=' ).
+
+    search lv_iflow_name for '|'.
+
+    if sy-subrc = 0.
+
+      ep_result = substring_before( val = lv_iflow_name sub = '|' ).
+
+    else.
+
+      ep_result = lv_iflow_name.
+
+    endif. " if sy-subrc = 0
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_CPI_DS_PROJECT
 * +-------------------------------------------------------------------------------------------------+
 * | [--->] IP_METRIC_PATH                 TYPE        STRING
@@ -1433,13 +1511,17 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
 * | [--->] IP_IFLOW_NAME                  TYPE        STRING
 * | [<-()] EP_RESULT                      TYPE        STRING
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-  method GET_CPI_SOURCE_SYSTEM.
+  method get_cpi_source_system.
 
     search ip_iflow_name for '_'.
 
     if sy-subrc = 0.
 
       ep_result = substring_before( val = ip_iflow_name sub = '_' ).
+
+    else.
+
+      ep_result = ip_iflow_name.
 
     endif. " if sy-subrc = 0
 
@@ -1514,6 +1596,153 @@ CLASS ZCL_SERVESS_ALERTS_INTEGRATION IMPLEMENTATION.
       event_type_id = ip_event_type_id and
       ac_variant eq 'A' and
       parameter_id eq 'TECH_CTX'.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_PI_INTERFACE_COMPONENTS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_METRIC_PATH                 TYPE        STRING
+* | [--->] IP_COMPONENT_NAME              TYPE        STRING
+* | [<-()] EP_RESULT                      TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method get_pi_interface_components.
+
+    data:
+      lv_component_name   type string,
+      lv_string_to_search type string.
+
+    concatenate ip_component_name '=' into lv_string_to_search.
+
+    lv_component_name = substring_after( val = ip_metric_path sub = lv_string_to_search ).
+
+    search lv_component_name for '|'.
+
+    if sy-subrc = 0.
+
+      ep_result = substring_before( val = lv_component_name sub = '|' ).
+
+    else.
+
+      ep_result = lv_component_name.
+
+    endif. " if sy-subrc = 0
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_PI_INTERFACE_SUBSYSTEM
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_METRIC_PATH                 TYPE        STRING
+* | [<-()] EP_RESULT                      TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method get_pi_interface_subsystem.
+
+
+    ep_result = get_pi_interface_components(
+      exporting
+        ip_metric_path    = ip_metric_path
+        ip_component_name = 'RCV_COMPONENT' ).
+
+    if strlen( ep_result )  eq 0.
+
+      ep_result = get_pi_interface_components(
+        exporting
+          ip_metric_path    = ip_metric_path
+          ip_component_name = 'SND_COMPONENT' ).
+    endif.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_PI_INTERFACE_TITLE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_METRIC_PATH                 TYPE        STRING
+* | [<-()] EP_RESULT                      TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_PI_INTERFACE_TITLE.
+
+
+    ep_result = get_pi_interface_components(
+      exporting
+        ip_metric_path    = ip_metric_path
+        ip_component_name = 'RCV_INTERFACE' ).
+
+    if strlen( ep_result )  eq 0.
+
+      ep_result = get_pi_interface_components(
+        exporting
+          ip_metric_path    = ip_metric_path
+          ip_component_name = 'SND_INTERFACE' ).
+    endif.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_SERVESS_ALERTS_INTEGRATION=>GET_RULEID_FROM_MAP
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IP_SUBSYSTEM                   TYPE        CPIS_LOG_TEXT
+* | [--->] IP_TITLE                       TYPE        CHAR258
+* | [<-()] EP_RULEID                      TYPE        SMOCC_TXT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method get_ruleid_from_map.
+
+    types:
+      begin of ty_rules_map,
+        subsystem type cpis_log_text,
+        title     type char258,
+        ruleid    type smocc_txt,
+
+      end of ty_rules_map.
+
+    data: lv_subsystem type cpis_log_text,
+          lv_title     type char258,
+          lt_rules_map type table of ty_rules_map.
+
+    clear lt_rules_map.
+
+    select subsystem title ruleid from zservessrulesmap into corresponding fields of table lt_rules_map.
+
+    loop at lt_rules_map assigning field-symbol(<ls_rules_map>).
+
+      clear:
+        lv_subsystem,
+        lv_title.
+
+      lv_subsystem = <ls_rules_map>-subsystem.
+      lv_title = <ls_rules_map>-title.
+
+      if ( lv_subsystem cs ip_subsystem ) and
+        ( lv_title cs ip_title ).
+
+        ep_ruleid = <ls_rules_map>-ruleid.
+
+      endif. " if ( lv_subsystem cs ip_subsystem )
+
+    endloop. " loop at lt_rules_map assigning field-symbol(<ls_rules_map>)
+
+    if ep_ruleid is initial.
+
+      if ip_title ne '*'.
+
+        ep_ruleid = get_ruleid_from_map(
+          exporting
+            ip_subsystem = ip_subsystem
+            ip_title     = '*' ).
+      else.
+
+        ep_ruleid = get_ruleid_from_map(
+          exporting
+            ip_subsystem = '*'
+            ip_title     = '*' ).
+
+      endif. " if ip_title ne '*'
+
+    endif. " if ep_ruleid is initial
 
   endmethod.
 
@@ -1993,115 +2222,6 @@ endmethod.
         insert zalrtservesslog from wa_zalrtservesslog.
 
     endcase.
-
-
-  endmethod.
-
-
-* <SIGNATURE>---------------------------------------------------------------------------------------+
-* | Static Protected Method ZCL_SERVESS_ALERTS_INTEGRATION=>ZZZGET_IC_MON_TICKET_ROUTE
-* +-------------------------------------------------------------------------------------------------+
-* | [--->] IP_INTERFACE_NAME              TYPE        STRING
-* | [--->] IP_ERROR_SUBSTRING             TYPE        STRING
-* | [<-()] EP_IT_SOLUTION                 TYPE        INT4
-* +--------------------------------------------------------------------------------------</SIGNATURE>
-  method ZZZGET_IC_MON_TICKET_ROUTE.
-
-    data:
-      lr_service_manager type ref to cl_crm_smf_service_manager,
-      lr_exc             type ref to cx_root,
-      lr_session         type ref to cl_crm_smf_execution_session,
-      lv_it_sol_num      type int4,
-      lv_profile         type string.
-
-
-    " Picking a name of profile from parameter
-
-    lv_profile = get_alrt_rest_int_param_value('IC_MON_ROUTE_RULE_ID').
-
-    if lv_profile is initial.
-
-      return.
-
-    endif.
-
-    cl_crm_smf_service_manager=>create(
-                             context = ''
-                             profile = lv_profile
-    ).
-    " Get service manager
-    lr_service_manager = cl_crm_smf_service_manager=>get_instance( lv_profile ).
-
-    check lr_service_manager is bound.
-
-    " Get service manager session
-    lr_session = lr_service_manager->create_session( ).
-
-    check lr_session is bound.
-
-    lr_session->set_data( name  = 'ERROR_MESSAGE'
-                          value = ip_error_substring ).
-
-    lr_session->set_data( name  = 'INTERFACE_NAME'
-                          value = ip_interface_name ).
-
-    try.
-        lr_service_manager->execute( session = lr_session ).
-
-      catch cx_crm_smf_service_failed into lr_exc.
-        exit.
-    endtry.
-
-    " read result
-
-    call method lr_session->get_data
-      exporting
-        name  = 'IT_SOLUTION'
-      importing
-        value = ep_it_solution.
-
-
-    " Release session
-
-    lr_session->uninit( ).
-
-  endmethod.
-
-
-* <SIGNATURE>---------------------------------------------------------------------------------------+
-* | Static Protected Method ZCL_SERVESS_ALERTS_INTEGRATION=>ZZZGET_TICKET_ROUTE
-* +-------------------------------------------------------------------------------------------------+
-* | [--->] IP_TECHNICAL_SCENARIO          TYPE        AC_TECHNICAL_SCENARIO
-* | [--->] IP_ALERT_TNAME                 TYPE        AC_NAME
-* | [<-()] EP_IT_SOLUTION                 TYPE        INT4
-* +--------------------------------------------------------------------------------------</SIGNATURE>
-  method ZZZGET_TICKET_ROUTE.
-
-    case ip_technical_scenario.
-
-      when 'IC_MON'. " Interface monitoring
-
-        " For interface monitoring we need
-        " Interface name
-        " Error text
-
-        case ip_alert_tname.
-
-          when 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT' or 'ICMON_HIGH_NO_OF_HCI_S_EXCEPTION_ALERT'.
-
-            " For CPI-DS and CPI we take IFlow name as Interface
-
-*            get_ic_mon_ticket_route(
-*              exporting
-*                ip_interface_name  =
-*                ip_error_substring =
-*              receiving
-*                ep_it_solution     = ep_it_solution).
-
-
-        endcase. " case ip_alert_tname
-
-    endcase. " case ip_technical_scenario.
 
 
   endmethod.
